@@ -1,0 +1,79 @@
+name: Terraform Validate
+
+on:
+  pull_request:
+    paths:
+      - 'terraform/**'
+
+jobs:
+  validate:
+    name: Validate (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment: [dev, prod]
+
+    defaults:
+      run:
+        working-directory: terraform/environments/${{ matrix.environment }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.7"
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive ../../
+
+      - name: Terraform Validate
+        run: terraform validate
+
+  tfsec:
+    name: tfsec Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: tfsec
+        uses: aquasecurity/tfsec-action@v1.0.0
+        with:
+          working_directory: terraform/
+          soft_fail: true
+          format: sarif
+          sarif_file: tfsec.sarif
+
+      - name: Upload SARIF
+        if: ${{ hashFiles('tfsec.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: tfsec.sarif
+
+  helm-lint:
+    name: Helm Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "v3.14.0"
+
+      - name: Lint MLflow
+        run: helm lint platform/helm/mlflow/ --values platform/helm/mlflow/values.yaml || true
+
+      - name: Lint Argo Workflows
+        run: helm lint platform/helm/argo-workflows/ --values platform/helm/argo-workflows/values.yaml || true
+
+      - name: Lint KServe
+        run: helm lint platform/helm/kserve/ --values platform/helm/kserve/values.yaml || true

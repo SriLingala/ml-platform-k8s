@@ -1,0 +1,63 @@
+# ML Engineer — can manage workflows and InferenceServices but cannot modify platform config
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ml-engineer
+rules:
+  # Full access to Argo Workflows
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflows", "workflowtemplates", "cronworkflows", "workflowartifactgctasks"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Full access to KServe InferenceServices
+  - apiGroups: ["serving.kserve.io"]
+    resources: ["inferenceservices", "servingruntimes"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Read pods and logs — needed to debug training jobs
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "pods/status"]
+    verbs: ["get", "list", "watch"]
+
+  # Read events in ml namespaces
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+
+  # Read ConfigMaps (workflow configs, serving configs)
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+
+  # PVC management for training datasets
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ml-engineer-binding
+  namespace: ml-training
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ml-engineer
+subjects:
+  - kind: Group
+    name: ml-engineers   # maps to Azure AD group via AKS AAD integration
+    apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ml-engineer-binding
+  namespace: ml-serving
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ml-engineer
+subjects:
+  - kind: Group
+    name: ml-engineers
+    apiGroup: rbac.authorization.k8s.io

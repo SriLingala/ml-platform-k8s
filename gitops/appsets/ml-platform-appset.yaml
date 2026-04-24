@@ -1,0 +1,46 @@
+# ApplicationSet — deploys the full ML platform stack across environments
+# Add a new environment by adding an entry to the generators list
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: ml-platform
+  namespace: argocd
+spec:
+  generators:
+    - list:
+        elements:
+          - environment: dev
+            cluster: https://aks-dev.example.com
+            revision: develop
+          - environment: prod
+            cluster: https://aks-prod.example.com
+            revision: main
+
+  template:
+    metadata:
+      name: "ml-platform-{{environment}}"
+      labels:
+        environment: "{{environment}}"
+        app.kubernetes.io/part-of: ml-platform
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
+
+    spec:
+      project: ml-platform
+
+      source:
+        repoURL: https://github.com/SriLingala/ml-platform-k8s
+        targetRevision: "{{revision}}"
+        path: gitops/apps
+
+      destination:
+        server: "{{cluster}}"
+        namespace: argocd
+
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=false
+          - ServerSideApply=true

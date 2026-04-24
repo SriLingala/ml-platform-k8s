@@ -1,0 +1,43 @@
+# DCGM Exporter — NVIDIA GPU metrics for Prometheus
+# Chart: gpu-helm-charts/dcgm-exporter
+# https://github.com/NVIDIA/dcgm-exporter
+
+image:
+  tag: "3.3.5-3.4.0-ubuntu22.04"
+
+# Only run on GPU nodes
+nodeSelector:
+  nvidia.com/gpu: "true"
+
+tolerations:
+  - key: "sku"
+    operator: "Equal"
+    value: "gpu"
+    effect: "NoSchedule"
+  - key: "kubernetes.azure.com/scalesetpriority"
+    operator: "Equal"
+    value: "spot"
+    effect: "NoSchedule"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# Key GPU metrics collected:
+# - DCGM_FI_DEV_GPU_UTIL         — GPU utilisation %
+# - DCGM_FI_DEV_MEM_COPY_UTIL    — Memory bandwidth utilisation
+# - DCGM_FI_DEV_FB_FREE          — Free framebuffer memory
+# - DCGM_FI_DEV_FB_USED          — Used framebuffer memory
+# - DCGM_FI_DEV_POWER_USAGE      — Power draw (W)
+# - DCGM_FI_DEV_SM_CLOCK         — SM clock speed
+serviceMonitor:
+  enabled: true
+  additionalLabels:
+    release: kube-prometheus-stack
+  interval: 15s
+
+# Prometheus alerts shipped separately in platform/namespaces/ml-monitoring/

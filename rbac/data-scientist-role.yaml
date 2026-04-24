@@ -1,0 +1,43 @@
+# Data Scientist — read-only access to running workloads, submit workflows, view MLflow
+# Cannot modify platform config, RBAC, or serving infrastructure
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: data-scientist
+rules:
+  # Submit and monitor Argo Workflows — but cannot delete/modify templates
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflows"]
+    verbs: ["get", "list", "watch", "create"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflowtemplates", "cronworkflows"]
+    verbs: ["get", "list", "watch"]
+
+  # View InferenceServices — no create/delete (platform team manages serving)
+  - apiGroups: ["serving.kserve.io"]
+    resources: ["inferenceservices"]
+    verbs: ["get", "list", "watch"]
+
+  # Read pod logs for their own training jobs
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+
+  # Read events
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: data-scientist-binding
+  namespace: ml-training
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: data-scientist
+subjects:
+  - kind: Group
+    name: data-scientists   # Azure AD group
+    apiGroup: rbac.authorization.k8s.io

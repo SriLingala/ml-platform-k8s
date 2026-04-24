@@ -1,0 +1,47 @@
+name: Security Scan
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  checkov:
+    name: Checkov IaC Scan
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          framework: terraform,kubernetes,helm
+          soft_fail: true
+          output_format: sarif
+          output_file_path: checkov.sarif
+
+      - name: Upload SARIF
+        if: ${{ hashFiles('checkov.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: checkov.sarif
+
+  kubescape:
+    name: Kubescape Kubernetes Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan Kubernetes manifests
+        uses: kubescape/github-action@main
+        with:
+          files: "platform/namespaces/**/*.yaml,rbac/**/*.yaml,gitops/**/*.yaml"
+          frameworks: NSA,MITRE
+          severityThreshold: high
+          # Fail on high severity issues in RBAC and namespace configs
+          # Platform team reviews results — not a hard block on non-RBAC files

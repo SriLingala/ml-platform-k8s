@@ -1,0 +1,67 @@
+# Argo Workflows — ML pipeline orchestration
+# Chart: argo/argo-workflows
+# https://github.com/argoproj/argo-helm/tree/main/charts/argo-workflows
+
+images:
+  tag: "v3.5.5"
+
+controller:
+  replicaCount: 2
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Only schedule workflows in allowed namespaces
+  workflowNamespaces:
+    - ml-training
+    - ml-serving
+
+server:
+  replicaCount: 1
+  authModes:
+    - server   # SSO in prod — swap to 'sso' and configure OIDC
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      - argo-workflows.internal.example.com
+
+workflow:
+  serviceAccount:
+    create: true
+  rbac:
+    create: true
+
+# Executor — use emissary (recommended over docker/k8s for security)
+executor:
+  image:
+    tag: "v3.5.5"
+
+# Artifact repository — point to Azure Blob
+artifactRepository:
+  azure:
+    endpoint: "https://<storage-account>.blob.core.windows.net"
+    container: mlflow-artifacts
+    useSDKCreds: true   # uses Workload Identity
+
+# Metrics
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    additionalLabels:
+      release: kube-prometheus-stack

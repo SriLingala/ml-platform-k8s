@@ -1,0 +1,55 @@
+# KServe — Model Serving (replaces deprecated Seldon Core v1)
+# Chart: kserve/kserve
+# https://kserve.github.io/website/
+
+kserve:
+  controller:
+    image:
+      tag: "v0.13.0"
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 300Mi
+      limits:
+        cpu: 1000m
+        memory: 500Mi
+
+  # Raw Kubernetes deployment mode (no Knative dependency — simpler ops)
+  deploymentMode: RawDeployment
+
+modelmesh:
+  enabled: false   # single-model serving for now; enable for high model-count scenarios
+
+# Default InferenceService resource limits
+# Applied if not specified per-model
+defaultDeploymentConfig:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 2
+      memory: 4Gi
+    # GPU resources set per-model via InferenceService spec
+
+# Node selector — inference pods land on GPU inference pool
+defaultNodeSelector:
+  workload-type: ml-serving
+
+defaultTolerations:
+  - key: "sku"
+    operator: "Equal"
+    value: "gpu"
+    effect: "NoSchedule"
+
+# Storage initialiser — pulls model artefacts from Azure Blob via Workload Identity
+storageInitializer:
+  image: kserve/storage-initializer:v0.13.0
+  resources:
+    requests:
+      memory: 100Mi
+      cpu: 100m
+    limits:
+      memory: 1Gi
+      cpu: "1"

@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kserve
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: ml-platform
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: ml-platform
+
+  source:
+    repoURL: https://kserve.github.io/helm-charts
+    chart: kserve
+    targetRevision: "0.13.x"
+    helm:
+      valueFiles:
+        - $values/platform/helm/kserve/values.yaml
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ml-serving
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

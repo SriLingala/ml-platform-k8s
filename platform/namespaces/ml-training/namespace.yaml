@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ml-training
+  labels:
+    # Pod Security Standards — enforce restricted for training workloads
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    app.kubernetes.io/managed-by: argocd
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: ml-training-quota
+  namespace: ml-training
+spec:
+  hard:
+    requests.cpu: "32"
+    requests.memory: 128Gi
+    limits.cpu: "64"
+    limits.memory: 256Gi
+    requests.nvidia.com/gpu: "8"    # max 8 GPUs concurrently in training ns
+    pods: "50"
+    persistentvolumeclaims: "20"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: ml-training-limits
+  namespace: ml-training
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: "2"
+        memory: 4Gi
+      defaultRequest:
+        cpu: 200m
+        memory: 512Mi
+      max:
+        cpu: "16"
+        memory: 64Gi
+        nvidia.com/gpu: "2"        # max 2 GPUs per container
+    - type: Pod
+      max:
+        nvidia.com/gpu: "4"        # max 4 GPUs per pod

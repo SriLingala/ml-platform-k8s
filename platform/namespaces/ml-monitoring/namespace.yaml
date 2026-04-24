@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ml-monitoring
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    app.kubernetes.io/managed-by: argocd
+---
+# GPU utilisation alert — fire when GPU util drops below 20% for 15m on training nodes
+# (likely means a job is stuck or misconfigured — wasting expensive spot capacity)
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: gpu-alerts
+  namespace: ml-monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: gpu.rules
+      rules:
+        - alert: GPULowUtilisation
+          expr: |
+            avg_over_time(DCGM_FI_DEV_GPU_UTIL{namespace="ml-training"}[15m]) < 20
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "GPU utilisation low on training node {{ $labels.instance }}"
+            description: "GPU util at {{ $value }}% for 15+ minutes. Check if training job is stuck."
+
+        - alert: GPUMemoryNearFull
+          expr: |
+            (DCGM_FI_DEV_FB_USED / (DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE)) * 100 > 90
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "GPU memory near capacity on {{ $labels.instance }}"
+            description: "GPU memory at {{ $value }}%. OOM kill risk."
+
+        - alert: GPUNodeNotReady
+          expr: |
+            kube_node_status_condition{condition="Ready",status="true"}
+            * on(node) group_left()
+            kube_node_labels{label_workload_type=~"ml-training|ml-serving"} == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "GPU node {{ $labels.node }} not ready"

@@ -1,0 +1,49 @@
+# Platform Admin — manages the ML platform itself (not ML workloads)
+# Scoped to ml-* namespaces only — no cluster-admin
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ml-platform-admin
+rules:
+  # Full namespace management
+  - apiGroups: [""]
+    resources: ["namespaces", "resourcequotas", "limitranges", "serviceaccounts", "services", "configmaps", "secrets", "persistentvolumes", "persistentvolumeclaims"]
+    verbs: ["*"]
+
+  # Helm-managed resources
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    verbs: ["*"]
+
+  # RBAC management within ml namespaces
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["*"]
+
+  # ML platform CRDs
+  - apiGroups: ["serving.kserve.io", "argoproj.io", "monitoring.coreos.com"]
+    resources: ["*"]
+    verbs: ["*"]
+
+  # Network policies
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies", "ingresses"]
+    verbs: ["*"]
+
+  # Node management — needed to cordon GPU nodes for maintenance
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ml-platform-admin-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ml-platform-admin
+subjects:
+  - kind: Group
+    name: ml-platform-admins   # Azure AD group
+    apiGroup: rbac.authorization.k8s.io
