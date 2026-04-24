@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: falco
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: ml-platform
+    app.kubernetes.io/component: security
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: ml-platform
+
+  source:
+    repoURL: https://falcosecurity.github.io/charts
+    chart: falco
+    targetRevision: "4.x"
+    helm:
+      valueFiles:
+        - $values/platform/helm/falco/values.yaml
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: falco   # dedicated namespace — Falco needs elevated privileges, isolate it
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

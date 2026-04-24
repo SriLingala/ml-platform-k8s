@@ -54,6 +54,14 @@ module "acr" {
   tags = local.tags
 }
 
+module "defender" {
+  source = "../../modules/defender"
+
+  cluster_id                 = var.cluster_id
+  enable_defender            = false   # set true in prod
+  log_analytics_workspace_id = ""
+}
+
 locals {
   tags = {
     environment = "dev"

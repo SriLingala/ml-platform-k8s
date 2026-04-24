@@ -1,0 +1,133 @@
+# NetworkPolicies for ml-training namespace
+# Default posture: deny all ingress and egress, then selectively allow what's needed.
+# This limits blast radius if a training job is compromised.
+
+# ── 1. Default deny all ───────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: ml-training
+spec:
+  podSelector: {}          # applies to every pod in the namespace
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# ── 2. Allow DNS resolution ───────────────────────────────────────────────────
+# Without this, pods can't resolve Azure Blob / ACR hostnames
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: ml-training
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+# ── 3. Allow egress to Azure Blob Storage (model artefacts + MLflow) ─────────
+# Blob storage endpoint is on HTTPS/443. Workload Identity handles auth.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-azure-blob
+  namespace: ml-training
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - port: 443
+          protocol: TCP
+      # Azure Blob uses private endpoint — traffic stays on VNet.
+      # If using public endpoint, restrict to Azure Storage service tag via Azure NPM.
+---
+# ── 4. Allow egress to ACR (pull training images) ────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-acr
+  namespace: ml-training
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: training-job
+  policyTypes:
+    - Egress
+  egress:
+    - ports:
+        - port: 443
+          protocol: TCP
+---
+# ── 5. Allow egress to MLflow tracking server (ml-monitoring namespace) ───────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-mlflow
+  namespace: ml-training
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: training-job
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ml-monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mlflow
+      ports:
+        - port: 5000
+          protocol: TCP
+---
+# ── 6. Allow Argo Workflows controller → training pods ────────────────────────
+# Controller (in ml-training ns) needs to reach pods to check status
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-argo-controller
+  namespace: ml-training
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: argo-workflows
+      ports:
+        - port: 8080
+          protocol: TCP
+---
+# ── 7. Allow Prometheus scraping from ml-monitoring ───────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: ml-training
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ml-monitoring
+      ports:
+        - port: 9090
+          protocol: TCP
+        - port: 8080
+          protocol: TCP

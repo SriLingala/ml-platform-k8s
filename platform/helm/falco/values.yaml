@@ -1,0 +1,157 @@
+# Falco — Runtime Security
+# Chart: falcosecurity/falco
+# https://github.com/falcosecurity/charts/tree/master/charts/falco
+
+image:
+  tag: "0.38.1"
+
+# eBPF driver — preferred over kernel module on AKS (no kernel headers needed)
+driver:
+  kind: ebpf
+
+# Run on ALL nodes including GPU nodes
+tolerations:
+  - operator: Exists   # tolerate all taints — Falco must run everywhere
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 1024Mi
+
+# Falco rules — ML platform specific
+# These sit on top of the default Falco ruleset
+customRules:
+  ml-platform-rules.yaml: |-
+
+    # ── GPU / Training workload rules ─────────────────────────────────────
+
+    - rule: Unexpected process in training container
+      desc: >
+        Training jobs should only run python, pip, or standard data science
+        tooling. Alert if anything unusual executes inside a training pod.
+      condition: >
+        spawned_process
+        and container
+        and k8s.ns.name = "ml-training"
+        and not proc.name in (python3, python, pip, pip3, sh, bash, tini,
+                              nvidia-smi, nvcc, mpirun, torchrun, deepspeed,
+                              accelerate, ray, dask-worker)
+      output: >
+        Unexpected process in training container
+        (proc=%proc.name user=%user.name ns=%k8s.ns.name
+        pod=%k8s.pod.name image=%container.image.repository)
+      priority: WARNING
+      tags: [ml-training, process]
+
+    - rule: Training container writing outside allowed paths
+      desc: >
+        Training containers should only write to /tmp, /checkpoint, or
+        mounted PVCs. Writing elsewhere may indicate data exfiltration or
+        a misconfigured job.
+      condition: >
+        open_write
+        and container
+        and k8s.ns.name = "ml-training"
+        and not fd.name startswith /tmp
+        and not fd.name startswith /checkpoint
+        and not fd.name startswith /mnt
+        and not fd.name startswith /proc
+        and not fd.name startswith /dev
+        and not fd.name startswith /sys
+      output: >
+        Training container writing to unexpected path
+        (file=%fd.name proc=%proc.name pod=%k8s.pod.name ns=%k8s.ns.name)
+      priority: WARNING
+      tags: [ml-training, filesystem]
+
+    - rule: nvidia-smi called outside GPU namespace
+      desc: >
+        nvidia-smi should only run on GPU node pools. If it appears on a
+        non-GPU node it may indicate a misconfigured or escaped workload.
+      condition: >
+        spawned_process
+        and proc.name = "nvidia-smi"
+        and not k8s.ns.name in (ml-training, ml-serving)
+      output: >
+        nvidia-smi called outside GPU namespace
+        (proc=%proc.name ns=%k8s.ns.name pod=%k8s.pod.name)
+      priority: WARNING
+      tags: [gpu, anomaly]
+
+    # ── Model serving rules ───────────────────────────────────────────────
+
+    - rule: Unexpected shell in serving container
+      desc: >
+        Inference containers should never spawn an interactive shell.
+        This is a strong indicator of attempted container escape or
+        post-exploitation activity.
+      condition: >
+        spawned_process
+        and container
+        and k8s.ns.name = "ml-serving"
+        and proc.name in (bash, sh, zsh, dash, ksh)
+        and proc.pname != tini
+      output: >
+        Shell spawned in serving container
+        (shell=%proc.name parent=%proc.pname pod=%k8s.pod.name
+        ns=%k8s.ns.name image=%container.image.repository)
+      priority: CRITICAL
+      tags: [ml-serving, shell, escape]
+
+    - rule: Serving container making unexpected outbound connection
+      desc: >
+        KServe inference containers should only respond to inbound requests.
+        Unexpected outbound connections from a serving pod may indicate
+        model exfiltration or C2 activity.
+      condition: >
+        outbound
+        and container
+        and k8s.ns.name = "ml-serving"
+        and not fd.sip in (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+        and not fd.sport in (443, 80)
+      output: >
+        Unexpected outbound connection from serving container
+        (dest=%fd.rip:%fd.rport proc=%proc.name pod=%k8s.pod.name)
+      priority: WARNING
+      tags: [ml-serving, network]
+
+    # ── Secret / credential protection ───────────────────────────────────
+
+    - rule: Read of sensitive file in ML namespace
+      desc: >
+        No ML workload should be reading /etc/shadow, /etc/kubernetes,
+        or kubeconfig files. Workload Identity means no credentials on disk.
+      condition: >
+        open_read
+        and container
+        and k8s.ns.name in (ml-training, ml-serving)
+        and fd.name in (/etc/shadow, /etc/sudoers, /root/.kube/config,
+                       /var/run/secrets/kubernetes.io/serviceaccount/token)
+        and not proc.name in (kubelet, kube-proxy)
+      output: >
+        Sensitive file read in ML namespace
+        (file=%fd.name proc=%proc.name pod=%k8s.pod.name ns=%k8s.ns.name)
+      priority: CRITICAL
+      tags: [credentials, ml-training, ml-serving]
+
+# Falco Sidekick — forward alerts to Slack / PagerDuty / Prometheus
+falcosidekick:
+  enabled: true
+  config:
+    prometheus:
+      hostport: "http://kube-prometheus-stack-prometheus.ml-monitoring:9090"
+    # Uncomment and configure for Slack alerts:
+    # slack:
+    #   webhookurl: ""
+    #   minimumpriority: "warning"
+
+# Prometheus metrics
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    additionalLabels:
+      release: kube-prometheus-stack
