@@ -57,8 +57,7 @@ ml-platform-k8s/
 │   │   ├── storage/           # Azure Blob — models, datasets, mlflow artefacts
 │   │   └── acr/               # Container registry — quarantine scan, admin disabled
 │   └── environments/
-│       ├── dev/
-│       └── prod/
+│       └── dev/
 ├── platform/
 │   ├── helm/
 │   │   ├── mlflow/            # Experiment tracking + model registry
